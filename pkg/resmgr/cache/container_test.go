@@ -746,16 +746,16 @@ paths:
 			}
 		)
 
-		Expect(checkAllowedHints(annotations1, 1)).To(Equal(true))
-		Expect(checkAllowedHints(annotations2, 0)).To(Equal(true))
-		Expect(checkAllowedHints(annotations3, 1)).To(Equal(true))
-		Expect(checkAllowedHints(annotations4, 0)).To(Equal(true))
-		Expect(checkAllowedHints(annotations5, 1)).To(Equal(true))
-		Expect(checkAllowedHints(annotations6, 0)).To(Equal(false))
+		Expect(checkAllowedHints(annotations1, 1)).Should(Succeed())
+		Expect(checkAllowedHints(annotations2, 0)).Should(Succeed())
+		Expect(checkAllowedHints(annotations3, 1)).Should(Succeed())
+		Expect(checkAllowedHints(annotations4, 0)).Should(Succeed())
+		Expect(checkAllowedHints(annotations5, 1)).Should(Succeed())
+		Expect(checkAllowedHints(annotations6, 0)).Should(HaveOccurred())
 	})
 })
 
-func checkAllowedHints(annotations map[string]string, expectedHints int) bool {
+func checkAllowedHints(annotations map[string]string, expectedHints int) error {
 	var (
 		// Note that we assume here that /boot is installed in a non virtual
 		// device node so that the code in topology.go can resolve it to a real device.
@@ -799,25 +799,21 @@ func checkAllowedHints(annotations map[string]string, expectedHints int) bool {
 		ann := "allow" + "." + cache.TopologyHintsKey
 		allow, ok := ctr.GetEffectiveAnnotation(ann)
 		if !ok {
-			fmt.Errorf("unable to get annotation %s (%s)", ann, allow)
-			return false
+			return fmt.Errorf("unable to get annotation %s (%s)", ann, allow)
 		}
 
 		if err := yaml.Unmarshal([]byte(allow), &pathList); err != nil {
-			fmt.Errorf("Error (%v) when trying to parse \"%s\"", err, allow)
-			return false
+			return fmt.Errorf("Error (%v) when trying to parse \"%s\"", err, allow)
 		}
 
 		ann = "deny" + "." + cache.TopologyHintsKey
 		deny, ok := ctr.GetEffectiveAnnotation(ann)
 		if !ok {
-			fmt.Errorf("unable to get annotation %s (%s)", ann, deny)
-			return false
+			return fmt.Errorf("unable to get annotation %s (%s)", ann, deny)
 		}
 
 		if err := yaml.Unmarshal([]byte(deny), &pathList); err != nil {
-			fmt.Errorf("Error (%v) when trying to parse \"%s\"", err, deny)
-			return false
+			return fmt.Errorf("Error (%v) when trying to parse \"%s\"", err, deny)
 		}
 
 		// Then we check that we get proper hints from the APIs
@@ -830,7 +826,7 @@ func checkAllowedHints(annotations map[string]string, expectedHints int) bool {
 		}
 	}
 
-	return true
+	return nil
 }
 
 func createSysFsDevice(devType string, major, minor int64) error {
@@ -840,6 +836,10 @@ func createSysFsDevice(devType string, major, minor int64) error {
 	}
 
 	realDevPath, err := filepath.EvalSymlinks(devPath)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(testdataDir+"/"+realDevPath, 0770); err != nil {
 		return err
 	}
@@ -884,8 +884,8 @@ func setupSysFsDevice(dev string) error {
 		}
 	}
 
-	major := int64(unix.Major(rdev))
-	minor := int64(unix.Minor(rdev))
+	major := int64(unix.Major(uint64(rdev)))
+	minor := int64(unix.Minor(uint64(rdev)))
 	if major == 0 {
 		return fmt.Errorf("%s is a virtual device node", dev)
 	}
@@ -927,10 +927,8 @@ func WithCtrArgs(args []string) CtrOption {
 			nriCtr.Args = nil
 			return nil
 		}
-		nriCtr.Args = make([]string, len(args), len(args))
-		for i, a := range args {
-			nriCtr.Args[i] = a
-		}
+		nriCtr.Args = make([]string, len(args))
+		copy(nriCtr.Args, args)
 		return nil
 	}
 }
@@ -941,10 +939,8 @@ func WithCtrEnv(env []string) CtrOption {
 			nriCtr.Env = nil
 			return nil
 		}
-		nriCtr.Env = make([]string, len(env), len(env))
-		for i, e := range env {
-			nriCtr.Env[i] = e
-		}
+		nriCtr.Env = make([]string, len(env))
+		copy(nriCtr.Env, env)
 		return nil
 	}
 }
@@ -955,12 +951,10 @@ func WithCtrMounts(mounts []*nri.Mount) CtrOption {
 			nriCtr.Mounts = nil
 			return nil
 		}
-		nriCtr.Mounts = make([]*nri.Mount, len(mounts), len(mounts))
+		nriCtr.Mounts = make([]*nri.Mount, len(mounts))
 		for i, m := range mounts {
 			var options []string
-			for _, o := range m.Options {
-				options = append(options, o)
-			}
+			options = append(options, m.Options...)
 			nriCtr.Mounts[i] = &nri.Mount{
 				Destination: m.Destination,
 				Source:      m.Source,
@@ -983,9 +977,9 @@ func WithCtrDevices(devices []*nri.LinuxDevice) CtrOption {
 		if nriCtr.Linux == nil {
 			nriCtr.Linux = &nri.LinuxContainer{}
 		}
-		nriCtr.Linux.Devices = make([]*nri.LinuxDevice, len(devices), len(devices))
-		for i, d := range devices {
-			nriCtr.Linux.Devices[i] = &nri.LinuxDevice{
+		nriCtr.Linux.Devices = make([]*nri.LinuxDevice, len(devices))
+		for _, d := range devices {
+			nriCtr.Linux.Devices = append(nriCtr.Linux.Devices, &nri.LinuxDevice{
 				Path:     d.Path,
 				Type:     d.Type,
 				Major:    d.Major,
@@ -993,7 +987,7 @@ func WithCtrDevices(devices []*nri.LinuxDevice) CtrOption {
 				Uid:      nri.UInt32(d.Uid),
 				Gid:      nri.UInt32(d.Gid),
 				FileMode: nri.FileMode(d.FileMode),
-			}
+			})
 		}
 		return nil
 	}

@@ -556,11 +556,7 @@ func (cch *cache) LookupPod(id string) (Pod, bool) {
 func (cch *cache) InsertContainer(ctr *nri.Container) (Container, error) {
 	var err error
 
-	c := &container{
-		cache: cch,
-	}
-
-	c, err = cch.createContainer(ctr)
+	c, err := cch.createContainer(ctr)
 	if err != nil {
 		return nil, cacheError("failed to insert container %s: %v", c.GetID(), err)
 	}
@@ -611,7 +607,7 @@ func (cch *cache) LookupContainerByCgroup(path string) (Container, bool) {
 			continue
 		}
 
-		if strings.Index(path, c.GetID()) != -1 {
+		if strings.Contains(path, c.GetID()) {
 			return c, true
 		}
 	}

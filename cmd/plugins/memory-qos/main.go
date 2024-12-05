@@ -80,11 +80,11 @@ func (p *plugin) Configure(ctx context.Context, config, runtime, version string)
 	if config != "" {
 		log.Debugf("loading configuration from NRI server")
 		if err := p.setConfig([]byte(config)); err != nil {
-			return 0, err
+			return p.mask, err
 		}
-		return 0, nil
+		return p.mask, nil
 	}
-	return 0, nil
+	return p.mask, nil
 }
 
 // onClose handles losing connection to container runtime.
@@ -117,7 +117,7 @@ func pprintCtr(pod *api.PodSandbox, ctr *api.Container) string {
 }
 
 // applyQosClass applies QoS class to a container, updates unified values.
-func (p *plugin) applyQosClass(pod *api.PodSandbox, ctr *api.Container, cls string, unified map[string]string) error {
+func (p *plugin) applyQosClass(ctr *api.Container, cls string, unified map[string]string) error {
 	if p.config == nil {
 		return fmt.Errorf("missing plugin configuration")
 	}
@@ -210,13 +210,13 @@ func (p *plugin) CreateContainer(ctx context.Context, pod *api.PodSandbox, ctr *
 	for annPrefix, value := range effectiveAnnotations(pod, ctr) {
 		switch {
 		case annPrefix == "class":
-			if err := p.applyQosClass(pod, ctr, value, unified); err != nil {
+			if err := p.applyQosClass(ctr, value, unified); err != nil {
 				errWithContext := fmt.Errorf("cannot apply memory QoS class %q: %w", value, err)
 				log.Errorf("CreateContainer %s: %s", ppName, errWithContext)
 				return nil, nil, errWithContext
 			}
 			class = value
-		case sliceContains(p.config.UnifiedAnnotations, annPrefix) == true:
+		case sliceContains(p.config.UnifiedAnnotations, annPrefix):
 			unified[annPrefix] = value
 			log.Tracef("applying unified annotation %q resulted in unified=%v", annPrefix, unified)
 		default:
