@@ -11,5 +11,6 @@ memory/index.md
 monitoring/index.md
 deployment/index.md
 contributing.md
+code-audit/index.md
 Project GitHub repository <https://github.com/containers/nri-plugins>
 ```
